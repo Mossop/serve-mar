@@ -1,0 +1,156 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+use std::{
+    fs::{metadata, File},
+    io::{self, BufReader, ErrorKind, Read},
+    path::Path,
+};
+
+use hmac_sha512::Hash;
+use serde::Serialize;
+use xml_serde::{to_string_custom, Options};
+
+const BUFFER_SIZE: usize = 5 * 1024 * 1024;
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateType {
+    Minor,
+}
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PatchType {
+    Complete,
+}
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HashFunction {
+    Sha512,
+}
+
+#[derive(Clone, Serialize)]
+pub struct Patch {
+    #[serde(rename = "$attr:type")]
+    pub patch_type: PatchType,
+    #[serde(rename = "$attr:URL")]
+    pub url: String,
+    #[serde(rename = "$attr:hashFunction")]
+    pub hash_function: HashFunction,
+    #[serde(rename = "$attr:hashValue")]
+    pub hash_value: String,
+    #[serde(rename = "$attr:size")]
+    pub size: u64,
+}
+
+impl Patch {
+    pub fn from_file<P: AsRef<Path>>(path: P) -> io::Result<Patch> {
+        let stat = metadata(&path)?;
+
+        if !stat.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Patches must be files",
+            ));
+        }
+
+        let mut reader = BufReader::new(File::open(path)?);
+        let mut buffer = [0_u8; BUFFER_SIZE];
+        let mut hasher = Hash::new();
+
+        loop {
+            match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(len) => {
+                    hasher.update(&buffer[0..len]);
+                }
+                Err(e) => {
+                    if e.kind() != ErrorKind::Interrupted {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+
+        Ok(Patch {
+            patch_type: PatchType::Complete,
+            url: "http://localhost:8000/update.mar".to_string(),
+            hash_function: HashFunction::Sha512,
+            hash_value: hex::encode(hasher.finalize()),
+            size: stat.len(),
+        })
+    }
+}
+
+#[derive(Clone, Serialize)]
+pub struct Update {
+    #[serde(rename = "$attr:type")]
+    pub update_type: UpdateType,
+    #[serde(rename = "$attr:displayVersion")]
+    pub display_version: String,
+    #[serde(rename = "$attr:appVersion")]
+    pub app_version: String,
+    #[serde(rename = "$attr:platformVersion")]
+    pub platform_version: String,
+    #[serde(rename = "$attr:buildID")]
+    pub build_id: String,
+    #[serde(rename = "patch")]
+    pub patches: Vec<Patch>,
+}
+
+impl Update {
+    pub fn from_mar<P: AsRef<Path>>(path: P) -> io::Result<Update> {
+        Ok(Update {
+            update_type: UpdateType::Minor,
+            display_version: "2000.0a1".to_string(),
+            app_version: "2000.0a1".to_string(),
+            platform_version: "2000.0a1".to_string(),
+            build_id: "21181002100236".to_string(),
+            patches: vec![Patch::from_file(path)?],
+        })
+    }
+}
+
+#[derive(Serialize)]
+struct UpdateListInner<'a> {
+    #[serde(rename = "update")]
+    pub updates: &'a Vec<Update>,
+}
+
+#[derive(Serialize)]
+struct UpdateListOuter<'a> {
+    #[serde(rename = "updates")]
+    pub inner: UpdateListInner<'a>,
+}
+
+#[derive(Clone)]
+pub struct Updates {
+    pub updates: Vec<Update>,
+}
+
+impl Updates {
+    pub fn from_mar<P: AsRef<Path>>(path: P) -> io::Result<Updates> {
+        Ok(Updates {
+            updates: vec![Update::from_mar(path)?],
+        })
+    }
+
+    pub fn serialize(&self) -> Result<String, io::Error> {
+        let outer = UpdateListOuter {
+            inner: UpdateListInner {
+                updates: &self.updates,
+            },
+        };
+
+        to_string_custom(
+            &outer,
+            Options {
+                include_schema_location: false,
+            },
+        )
+        .map_err(|e| io::Error::new(ErrorKind::InvalidData, format!("{}", e)))
+    }
+}

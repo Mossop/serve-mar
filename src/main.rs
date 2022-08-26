@@ -8,38 +8,57 @@ use actix_files::NamedFile;
 use actix_web::{get, web, App, HttpServer, Responder};
 use clap::Parser;
 use flexi_logger::Logger;
+use update::Updates;
+
+mod update;
 
 #[derive(Parser)]
 #[clap(author, version, about)]
 struct Args {
+    /// The mar file to serve.
     pub mar_file: String,
 }
 
 struct AppData {
     mar_file: PathBuf,
+    updates: Updates,
+}
+
+#[get("/update.xml")]
+async fn update_xml(data: web::Data<AppData>) -> impl Responder {
+    log::info!("Request: /update.xml");
+    data.updates.serialize()
 }
 
 #[get("/update.mar")]
-async fn greet(data: web::Data<AppData>) -> impl Responder {
+async fn update_mar(data: web::Data<AppData>) -> impl Responder {
+    log::info!("Request: /update.mar");
     NamedFile::open_async(&data.mar_file).await
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    if let Err(e) = Logger::try_with_env_or_str("info").and_then(|logger| logger.start()) {
+    if let Err(e) =
+        Logger::try_with_env_or_str("info,actix_server=warn").and_then(|logger| logger.start())
+    {
         eprintln!("Warning, failed to start logging: {}", e);
     }
 
     let args = Args::parse();
+    let updates = Updates::from_mar(&args.mar_file)?;
+
+    log::info!("Service updates from http://localhost:8000/update.xml");
 
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(AppData {
                 mar_file: PathBuf::from(&args.mar_file),
+                updates: updates.clone(),
             }))
-            .service(greet)
+            .service(update_mar)
+            .service(update_xml)
     })
-    .bind(("127.0.0.1", 8080))?
+    .bind(("0.0.0.0", 8000))?
     .run()
     .await
 }
