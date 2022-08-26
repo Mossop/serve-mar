@@ -1,0 +1,17 @@
+[package]
+name = "serve-mar"
+version = "0.1.0"
+description = "Serves a mar update file for Mozilla based applications."
+authors = ["Dave Townsend <dtownsend@oxymoronical.com>"]
+license = "MPL-2.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "^1.17.0", features = ["full"] }
+clap = { version = "^3.2.17", features = ["derive", "env"] }
+serde = { version = "^1.0.136", features = ["derive"] }
+log = "^0.4.14"
+flexi_logger = { version = "^0.22.3", features = ["colors", "use_chrono_for_offset"] }
+actix-web = "^4.1.0"
+actix-files = "^0.6.2"
+mar = { path = "../mar" }
