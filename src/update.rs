@@ -4,11 +4,13 @@
 
 use std::{
     fs::{metadata, File},
-    io::{self, BufReader, ErrorKind, Read},
+    io::{self, BufRead, BufReader, ErrorKind, Read},
     path::Path,
 };
 
 use hmac_sha512::Hash;
+use ini::Ini;
+use mar::Mar;
 use serde::Serialize;
 use xml_serde::{to_string_custom, Options};
 
@@ -24,6 +26,7 @@ pub enum UpdateType {
 #[serde(rename_all = "lowercase")]
 pub enum PatchType {
     Complete,
+    Partial,
 }
 
 #[derive(Clone, Copy, Serialize)]
@@ -103,13 +106,42 @@ pub struct Update {
 
 impl Update {
     pub fn from_mar<P: AsRef<Path>>(path: P) -> io::Result<Update> {
+        let mut patch = Patch::from_file(&path)?;
+        let mut version = "2000.0a1".to_string();
+        let mut build_id = "21181002100236".to_string();
+
+        let mut mar = Mar::from_path(&path)?;
+        for item in mar.files()? {
+            let item = item?;
+            if item.name == "updatev3.manifest" {
+                let reader = BufReader::new(mar.read(&item)?);
+                if let Some(Ok(line)) = reader.lines().next() {
+                    if line == "type \"partial\"" {
+                        patch.patch_type = PatchType::Partial;
+                    }
+                }
+            } else if item.name == "application.ini"
+                || item.name == "Contents/Resources/application.ini"
+            {
+                if let Ok(ini) = Ini::read_from(&mut mar.read(&item)?) {
+                    if let Some(val) = ini.get_from(Some("App"), "Version") {
+                        version = val.to_string();
+                    }
+
+                    if let Some(val) = ini.get_from(Some("App"), "BuildID") {
+                        build_id = val.to_string();
+                    }
+                }
+            }
+        }
+
         Ok(Update {
             update_type: UpdateType::Minor,
-            display_version: "2000.0a1".to_string(),
-            app_version: "2000.0a1".to_string(),
-            platform_version: "2000.0a1".to_string(),
-            build_id: "21181002100236".to_string(),
-            patches: vec![Patch::from_file(path)?],
+            display_version: version.clone(),
+            app_version: version.clone(),
+            platform_version: version,
+            build_id,
+            patches: vec![patch],
         })
     }
 }

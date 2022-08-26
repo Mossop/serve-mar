@@ -47,7 +47,7 @@ async fn main() -> std::io::Result<()> {
     let args = Args::parse();
     let updates = Updates::from_mar(&args.mar_file)?;
 
-    log::info!("Service updates from http://localhost:8000/update.xml");
+    log::info!("Serving updates from http://localhost:8000/update.xml");
 
     HttpServer::new(move || {
         App::new()
