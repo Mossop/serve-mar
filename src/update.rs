@@ -61,7 +61,7 @@ impl Patch {
         }
 
         let mut reader = BufReader::new(File::open(path)?);
-        let mut buffer = [0_u8; BUFFER_SIZE];
+        let mut buffer = vec![0_u8; BUFFER_SIZE];
         let mut hasher = Hash::new();
 
         loop {
