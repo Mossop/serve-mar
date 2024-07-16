@@ -7,7 +7,7 @@ You still need to [create an update mar file](https://firefox-source-docs.mozill
 using the instructions provided and be running a build built to support unsigned updates. But once
 you have that you can run an update server with:
 
-```
+```shell
 ~$ cargo install serve-mar
 ~$ serve-mar update.mar
 ```

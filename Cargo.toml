@@ -1,6 +1,6 @@
 [package]
 name = "serve-mar"
-version = "0.1.0"
+version = "0.1.1"
 description = "Serves a mar update file for Mozilla based applications."
 authors = ["Dave Townsend <dtownsend@oxymoronical.com>"]
 license = "MPL-2.0"
